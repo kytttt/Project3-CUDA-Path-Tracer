@@ -280,6 +280,43 @@ __global__ void shadeFakeMaterial(
     }
 }
 
+__global__ void shadeDiffuseBSDF(
+    int iter,
+    int depth,
+    int num_paths,
+    ShadeableIntersection* shadeableIntersections,
+    PathSegment* pathSegments,
+    Material* materials)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_paths) return;
+
+    PathSegment& seg = pathSegments[idx];
+    if (seg.remainingBounces <= 0) return;
+
+    ShadeableIntersection isect = shadeableIntersections[idx];
+    if (isect.t < 0.f)
+    {
+        seg.color *= BACKGROUND_COLOR;
+        seg.remainingBounces = 0;
+        return;
+    }
+
+    const Material& m = materials[isect.materialId];
+
+    if (m.emittance > 0.f)
+    {
+        seg.color *= (m.color * m.emittance);
+        seg.remainingBounces = 0;
+        return;
+    }
+
+    thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, depth);
+    glm::vec3 hitPoint = getPointOnRay(seg.ray, isect.t);
+    glm::vec3 n = glm::normalize(isect.surfaceNormal);
+
+    scatterRay(seg, hitPoint, n, m, rng);
+}
 // Add the current iteration's output to the overall image
 __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iterationPaths)
 {
@@ -370,7 +407,6 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         );
         checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();
-        depth++;
 
         // TODO:
         // --- Shading Stage ---
@@ -381,19 +417,35 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         // TODO: compare between directly shading the path segments and shading
         // path segments that have been reshuffled to be contiguous in memory.
 
-        shadeFakeMaterial<<<numblocksPathSegmentTracing, blockSize1d>>>(
+        //shadeFakeMaterial<<<numblocksPathSegmentTracing, blockSize1d>>>(
+        //    iter,
+        //    num_paths,
+        //    dev_intersections,
+        //    dev_paths,
+        //    dev_materials
+        //);
+                // Shade using diffuse BSDF
+        shadeDiffuseBSDF <<<numblocksPathSegmentTracing, blockSize1d >>> (
             iter,
+            depth,
             num_paths,
             dev_intersections,
             dev_paths,
             dev_materials
-        );
-        iterationComplete = true; // TODO: should be based off stream compaction results.
+            );
+        checkCUDAError("shade diffuse");
+        cudaDeviceSynchronize();
+        //iterationComplete = true; // TODO: should be based off stream compaction results.
 
+        depth++;
         if (guiData != NULL)
         {
             guiData->TracedDepth = depth;
         }
+
+        if(depth >= traceDepth) {
+            iterationComplete = true;
+		}
     }
 
     // Assemble this iteration and apply it to the image
