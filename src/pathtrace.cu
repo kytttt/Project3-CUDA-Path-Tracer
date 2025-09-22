@@ -6,6 +6,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
 #include <thrust/remove.h>
+#include <thrust/sort.h>
 
 #include "sceneStructs.h"
 #include "scene.h"
@@ -82,6 +83,12 @@ static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
 // TODO: static variables for device memory, any extra info you need, etc
 // ...
+static int* dev_materialKeys = NULL;
+static int* dev_indices = NULL;
+static PathSegment* dev_paths_sorted = NULL;
+static ShadeableIntersection* dev_intersections_sorted = NULL;
+static bool sortByMaterial = NULL; 
+#define enableAA  1;
 
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
@@ -110,7 +117,10 @@ void pathtraceInit(Scene* scene)
     cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
 
     // TODO: initialize any extra device memeory you need
-
+    cudaMalloc(&dev_materialKeys, pixelcount * sizeof(int));
+    cudaMalloc(&dev_indices, pixelcount * sizeof(int));
+    cudaMalloc(&dev_paths_sorted, pixelcount * sizeof(PathSegment));
+    cudaMalloc(&dev_intersections_sorted, pixelcount * sizeof(ShadeableIntersection));
     checkCUDAError("pathtraceInit");
 }
 
@@ -122,7 +132,10 @@ void pathtraceFree()
     cudaFree(dev_materials);
     cudaFree(dev_intersections);
     // TODO: clean up any extra device memory you created
-
+    cudaFree(dev_materialKeys);
+    cudaFree(dev_indices);
+    cudaFree(dev_paths_sorted);
+    cudaFree(dev_intersections_sorted);
     checkCUDAError("pathtraceFree");
 }
 
@@ -147,9 +160,21 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         segment.color = glm::vec3(1.0f, 1.0f, 1.0f);
 
         // TODO: implement antialiasing by jittering the ray
-        segment.ray.direction = glm::normalize(cam.view
-            - cam.right * cam.pixelLength.x * ((float)x - (float)cam.resolution.x * 0.5f)
-            - cam.up * cam.pixelLength.y * ((float)y - (float)cam.resolution.y * 0.5f)
+        float jx = 0.f;
+        float jy = 0.f;
+#if enableAA
+            thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
+            thrust::uniform_real_distribution<float> u01(0.f, 1.f);
+            jx = u01(rng); 
+            jy = u01(rng);
+#endif
+        float px = ((float)x + jx) - (float)cam.resolution.x * 0.5f;
+        float py = ((float)y + jy) - (float)cam.resolution.y * 0.5f;
+
+        segment.ray.direction = glm::normalize(
+            cam.view
+            - cam.right * cam.pixelLength.x * px
+            - cam.up * cam.pixelLength.y * py
         );
 
         segment.pixelIndex = index;
@@ -317,6 +342,64 @@ __global__ void shadeDiffuseBSDF(
 
     scatterRay(seg, hitPoint, n, m, rng);
 }
+
+__global__ void buildMaterialKeys(
+    int n,
+    const ShadeableIntersection* intersections,
+    const PathSegment* paths,
+    int* keys,
+    int* indices)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    const ShadeableIntersection& s = intersections[i];
+
+    if ((paths[i].remainingBounces <= 0) || (s.t < 0.f)) {
+		keys[i] = INT_MAX;
+    }
+    else
+		keys[i] = s.materialId;
+    indices[i] = i;
+}
+
+
+__global__ void sortByIndices(
+    int n,
+    const int* indices,
+    const PathSegment* ipaths,
+    const ShadeableIntersection* iIntersections,
+    PathSegment* opaths,
+    ShadeableIntersection* oIntersections)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+
+    opaths[i] = ipaths[indices[i]];
+    oIntersections[i] = iIntersections[indices[i]];
+}
+
+struct BounceEnd
+{
+    __host__ __device__
+        bool operator()(const PathSegment& p) const
+    {
+        return p.remainingBounces <= 0;
+    }
+};
+
+__global__ void handleEnd(int n, glm::vec3* image, PathSegment* paths)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    PathSegment& p = paths[i];
+    if (p.remainingBounces <= 0 && p.pixelIndex >= 0)
+    {
+        image[p.pixelIndex] += p.color;
+
+        p.pixelIndex = -1;
+    }
+}
+
 // Add the current iteration's output to the overall image
 __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iterationPaths)
 {
@@ -425,6 +508,31 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         //    dev_materials
         //);
                 // Shade using diffuse BSDF
+
+                // After intersections are computed
+        if (sortByMaterial)
+        {
+            buildMaterialKeys <<<numblocksPathSegmentTracing, blockSize1d >>> (
+                num_paths,
+                dev_intersections,
+                dev_paths,
+                dev_materialKeys,
+                dev_indices);
+            
+            thrust::sort_by_key(thrust::device, dev_materialKeys, dev_materialKeys + num_paths, dev_indices);
+            
+            sortByIndices <<<numblocksPathSegmentTracing, blockSize1d >>> (
+                num_paths,
+                dev_indices,
+                dev_paths,
+                dev_intersections,
+                dev_paths_sorted,
+                dev_intersections_sorted);
+            
+            std::swap(dev_paths, dev_paths_sorted);
+            std::swap(dev_intersections, dev_intersections_sorted);
+        }
+
         shadeDiffuseBSDF <<<numblocksPathSegmentTracing, blockSize1d >>> (
             iter,
             depth,
@@ -436,7 +544,12 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         checkCUDAError("shade diffuse");
         cudaDeviceSynchronize();
         //iterationComplete = true; // TODO: should be based off stream compaction results.
+        handleEnd <<<numblocksPathSegmentTracing, blockSize1d >>> (
+            num_paths, dev_image, dev_paths);
 
+        PathSegment* dev_new_end = thrust::remove_if(thrust::device, dev_paths, dev_paths + num_paths, BounceEnd());
+        num_paths = dev_new_end - dev_paths;
+		if (num_paths <= 0) iterationComplete = true;
         depth++;
         if (guiData != NULL)
         {
