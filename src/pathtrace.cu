@@ -87,7 +87,7 @@ static int* dev_materialKeys = NULL;
 static int* dev_indices = NULL;
 static PathSegment* dev_paths_sorted = NULL;
 static ShadeableIntersection* dev_intersections_sorted = NULL;
-static bool sortByMaterial = NULL; 
+static bool sortByMaterial = true; 
 #define enableAA  1;
 
 void InitDataContainer(GuiDataContainer* imGuiData)
@@ -139,6 +139,25 @@ void pathtraceFree()
     checkCUDAError("pathtraceFree");
 }
 
+__host__ __device__ inline glm::vec2 concentricDisk(float u1, float u2)
+{
+    float sx = 2.f * u1 - 1.f;
+    float sy = 2.f * u2 - 1.f;
+
+    if (sx == 0.f && sy == 0.f) return glm::vec2(0);
+
+    float r, theta;
+    if (fabsf(sx) > fabsf(sy)) {
+        r = sx;
+        theta = (PI / 4.f) * (sy / sx);
+    }
+    else {
+        r = sy;
+        theta = (PI / 2.f) - (PI / 4.f) * (sx / sy);
+    }
+    return r * glm::vec2(cosf(theta), sinf(theta));
+}
+
 /**
 * Generate PathSegments with rays from the camera through the screen into the
 * scene, which is the first bounce of rays.
@@ -162,21 +181,44 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         // TODO: implement antialiasing by jittering the ray
         float jx = 0.f;
         float jy = 0.f;
+        thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
+        thrust::uniform_real_distribution<float> u01(0.f, 1.f);
 #if enableAA
-            thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
-            thrust::uniform_real_distribution<float> u01(0.f, 1.f);
             jx = u01(rng); 
             jy = u01(rng);
 #endif
         float px = ((float)x + jx) - (float)cam.resolution.x * 0.5f;
         float py = ((float)y + jy) - (float)cam.resolution.y * 0.5f;
 
-        segment.ray.direction = glm::normalize(
+        //segment.ray.direction = glm::normalize(
+        //    cam.view
+        //    - cam.right * cam.pixelLength.x * px
+        //    - cam.up * cam.pixelLength.y * py
+        //);
+        glm::vec3 originalDir = glm::normalize(
             cam.view
             - cam.right * cam.pixelLength.x * px
             - cam.up * cam.pixelLength.y * py
         );
 
+        glm::vec3 origin = cam.position;
+        glm::vec3 direction = originalDir;
+
+        if (cam.lensRadius > 0.f)
+        {
+            float projectDis = glm::dot(originalDir, glm::normalize( cam.view));
+			if (projectDis == 0.f) projectDis = 1.f;
+            float ft = cam.focalDistance / projectDis;
+            glm::vec3 focalPoint = cam.position + originalDir * ft;
+
+            glm::vec2 randOffset = concentricDisk(u01(rng), u01(rng)) * cam.lensRadius;
+
+            origin = cam.position + randOffset.x * cam.right + randOffset.y * cam.up;
+            direction = glm::normalize(focalPoint - origin);
+        }
+
+        segment.ray.origin = origin;
+        segment.ray.direction = direction;
         segment.pixelIndex = index;
         segment.remainingBounces = traceDepth;
     }

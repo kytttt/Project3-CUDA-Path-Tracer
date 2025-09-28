@@ -58,6 +58,19 @@ void Scene::loadFromJSON(const std::string& jsonName)
         {
             const auto& col = p["RGB"];
             newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+			newMaterial.hasReflective = 1.f;
+            newMaterial.specular.color = glm::vec3(col[0], col[1], col[2]);
+        }
+        else if (p["TYPE"] == "Refractive")
+        {
+            const auto& col = p["RGB"];
+			newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+            newMaterial.hasRefractive = 1.f;
+            newMaterial.indexOfRefraction = p["IOR"];
+			newMaterial.hasReflective = 1.f;
+            newMaterial.specular.color = p.contains("SPECULAR_RGB")
+                ? glm::vec3(p["SPECULAR_RGB"][0], p["SPECULAR_RGB"][1], p["SPECULAR_RGB"][2])
+                : glm::vec3(1.f);
         }
         MatNameToID[name] = materials.size();
         materials.emplace_back(newMaterial);
@@ -114,6 +127,23 @@ void Scene::loadFromJSON(const std::string& jsonName)
     camera.right = glm::normalize(glm::cross(camera.view, camera.up));
     camera.pixelLength = glm::vec2(2 * xscaled / (float)camera.resolution.x,
         2 * yscaled / (float)camera.resolution.y);
+
+	//DOF initial setup
+    if (cameraData.contains("LENS_RADIUS"))
+        camera.lensRadius = cameraData["LENS_RADIUS"];
+    else if (cameraData.contains("APERTURE"))
+        camera.lensRadius = 0.5f * (float)cameraData["APERTURE"];
+
+    if (cameraData.contains("FOCAL_DISTANCE"))
+        camera.focalDistance = cameraData["FOCAL_DISTANCE"];
+    else if (cameraData.contains("FOCALPOINT"))
+    {
+        const auto& fp = cameraData["FOCALPOINT"];
+        glm::vec3 focusPt(fp[0], fp[1], fp[2]);
+        camera.focalDistance = glm::dot(focusPt - camera.position, camera.view);
+    }
+    if (camera.focalDistance <= 0.f)
+        camera.focalDistance = glm::length(camera.lookAt - camera.position);
 
     camera.view = glm::normalize(camera.lookAt - camera.position);
 
