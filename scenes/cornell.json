@@ -33,7 +33,17 @@
             "RGB": [1.0, 1.0, 1.0],
             "IOR": 1.5,
             "REFRACTIVE": 1.0,
-            "REFLECTIVE": 1.0
+            "REFLECTIVE": 0.0,
+            "THIN":0.0
+        },
+        "glass_inside": {
+            "TYPE": "Refractive",
+            "RGB": [1.0, 1.0, 1.0],
+            "IOR": 1.5,
+            "REFRACTIVE": 1.0,
+            "REFLECTIVE": 0.0,
+            "THIN":0.0,
+            "FLIP":1.0
         }
     },
     "Camera": {
@@ -107,6 +117,14 @@
             "TRANS": [2.0, 3.0, 1.5],
             "ROTAT": [0.0, 0.0, 0.0],
             "SCALE": [2.5, 2.5, 2.5]
+        },
+        {
+            "TYPE": "sphere",
+            "MATERIAL": "glass_inside",
+            "TRANS": [2.0, 3.0, 1.5],
+            "ROTAT": [0.0, 0.0, 0.0],
+            "SCALE": [2.49, 2.49, 2.49]
         }
+
     ]
 }

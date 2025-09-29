@@ -11,6 +11,7 @@
 #include <string>
 #include <unordered_map>
 
+#define ENABLEDOF 0
 using namespace std;
 using json = nlohmann::json;
 
@@ -65,12 +66,15 @@ void Scene::loadFromJSON(const std::string& jsonName)
         {
             const auto& col = p["RGB"];
 			newMaterial.color = glm::vec3(col[0], col[1], col[2]);
-            newMaterial.hasRefractive = 1.f;
+            newMaterial.hasRefractive = p["REFRACTIVE"];
             newMaterial.indexOfRefraction = p["IOR"];
-			newMaterial.hasReflective = 1.f;
+			newMaterial.hasReflective = p["REFLECTIVE"];
             newMaterial.specular.color = p.contains("SPECULAR_RGB")
                 ? glm::vec3(p["SPECULAR_RGB"][0], p["SPECULAR_RGB"][1], p["SPECULAR_RGB"][2])
                 : glm::vec3(1.f);
+            newMaterial.isThin = p.contains("THIN") ? float(p["THIN"]) : 0.f;
+			newMaterial.flip = p.contains("FLIP") ? float(p["FLIP"]) : 0.f;
+            newMaterial.emittance = p.contains("EMITTANCE") ? p["EMITTANCE"] : 0.f;
         }
         MatNameToID[name] = materials.size();
         materials.emplace_back(newMaterial);
@@ -129,6 +133,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
         2 * yscaled / (float)camera.resolution.y);
 
 	//DOF initial setup
+#if ENABLEDOF
     if (cameraData.contains("LENS_RADIUS"))
         camera.lensRadius = cameraData["LENS_RADIUS"];
     else if (cameraData.contains("APERTURE"))
@@ -144,7 +149,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
     }
     if (camera.focalDistance <= 0.f)
         camera.focalDistance = glm::length(camera.lookAt - camera.position);
-
+#endif
     camera.view = glm::normalize(camera.lookAt - camera.position);
 
     //set up render camera stuff

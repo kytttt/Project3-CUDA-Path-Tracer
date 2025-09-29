@@ -5,7 +5,7 @@
 #include <thrust/random.h>
 #include <glm/gtx/norm.hpp>
 
-#define enableRussianRoulette 1;
+#define enableRussianRoulette 1
 
 __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
     glm::vec3 normal,
@@ -75,6 +75,8 @@ __host__ __device__ void scatterRay(
 
     if (m.hasRefractive > 0.f && m.indexOfRefraction > 0.f)
     {
+        if(m.flip > 0.f)
+			n = -n;
         bool in_or_out = glm::dot(inVec, n) < 0.f;
         glm::vec3 nDir = in_or_out ? n : -n;
 
@@ -86,11 +88,35 @@ __host__ __device__ void scatterRay(
         float sin2 = eta_ratio * eta_ratio * fmaxf(0.f, 1.f - consine * consine);
 		bool cannotRefract = sin2 > 1.f;
 
-        float F = reflectance(consine, etaI, etaT);
+        /*float F = reflectance(consine, etaI, etaT);*/
+        float cosT = sqrtf(fmaxf(0.f, 1.f - sin2));
+        float F = reflectance(in_or_out ? consine : cosT, etaI, etaT);
 
         glm::vec3 newDir;
         float rand_f = u01(rng);
+        if (m.isThin > 0.f) 
+        {
+            float cosI = glm::clamp(-dot(inVec, nDir), 0.f, 1.f);
+            float F = reflectance(cosI, 1.f, m.indexOfRefraction);
 
+            if (u01(rng) < F) {
+               
+                newDir = reflect(inVec, nDir);
+                pathSegment.color *= glm::vec3(1.f);
+                pathSegment.ray.origin = intersect + nDir * EPS;   
+            }
+            else {
+                
+                newDir = inVec;
+                pathSegment.color *= glm::vec3(1.f);                    
+                pathSegment.ray.origin = intersect + newDir * EPS;  
+
+            }
+
+            pathSegment.ray.direction = normalize(newDir);
+            pathSegment.remainingBounces--;
+            return;
+        }
         if (cannotRefract || rand_f < F)
         {
             newDir = glm::reflect(inVec, nDir);

@@ -88,7 +88,7 @@ static int* dev_indices = NULL;
 static PathSegment* dev_paths_sorted = NULL;
 static ShadeableIntersection* dev_intersections_sorted = NULL;
 static bool sortByMaterial = true; 
-#define enableAA  1;
+#define enableAA  1
 
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
@@ -283,13 +283,13 @@ __global__ void computeIntersections(
         {
             intersections[path_index].t = -1.0f;
         }
-        else
-        {
+    else
+    {
             // The ray hits something
-            intersections[path_index].t = t_min;
-            intersections[path_index].materialId = geoms[hit_geom_index].materialid;
-            intersections[path_index].surfaceNormal = normal;
-        }
+        intersections[path_index].t = t_min;
+        intersections[path_index].materialId = geoms[hit_geom_index].materialid;
+        intersections[path_index].surfaceNormal = normal;
+    }
     }
 }
 
