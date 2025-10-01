@@ -58,7 +58,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
         else if (p["TYPE"] == "Specular")
         {
             const auto& col = p["RGB"];
-            newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+            newMaterial.color = glm::vec3(0.f);//glm::vec3(col[0], col[1], col[2]);
 			newMaterial.hasReflective = 1.f;
             newMaterial.specular.color = glm::vec3(col[0], col[1], col[2]);
         }
@@ -76,6 +76,18 @@ void Scene::loadFromJSON(const std::string& jsonName)
 			newMaterial.flip = p.contains("FLIP") ? float(p["FLIP"]) : 0.f;
             newMaterial.emittance = p.contains("EMITTANCE") ? p["EMITTANCE"] : 0.f;
         }
+        else if (p["TYPE"] == "Subsurface")
+        {
+            const auto& col = p["RGB"];
+            newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+			newMaterial.hasSubsurface = p["HAS_SUBSURFACE"];
+            newMaterial.sigma_s = glm::vec3(p["SIGMA_S"][0], p["SIGMA_S"][1], p["SIGMA_S"][2]);
+            newMaterial.sigma_a = glm::vec3(p["SIGMA_A"][0], p["SIGMA_A"][1], p["SIGMA_A"][2]);
+            newMaterial.hgG = p["HG_G"];
+            newMaterial.mediumScale = p.contains("MEDIUM_SCALE") ? p["MEDIUM_SCALE"] : 1.f;
+			newMaterial.emittance = p.contains("EMITTANCE") ? p["EMITTANCE"] : 0.f;
+        }
+
         MatNameToID[name] = materials.size();
         materials.emplace_back(newMaterial);
     }

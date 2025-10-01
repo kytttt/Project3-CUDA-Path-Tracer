@@ -47,6 +47,12 @@ struct Material
     float emittance;
     float isThin = 0.f;
     float flip =0.f;
+
+	float hasSubsurface = 0.f;
+    glm::vec3 sigma_s = glm::vec3(0.f);
+    glm::vec3 sigma_a = glm::vec3(0.f);
+    float hgG = 0.f;
+    float mediumScale = 1.f;
 };
 
 struct Camera
