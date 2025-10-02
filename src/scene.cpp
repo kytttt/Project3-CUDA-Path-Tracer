@@ -11,6 +11,9 @@
 #include <string>
 #include <unordered_map>
 
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "../third_party/tinyobjloader-release/tiny_obj_loader.h"
+
 #define ENABLEDOF 0
 using namespace std;
 using json = nlohmann::json;
@@ -96,27 +99,47 @@ void Scene::loadFromJSON(const std::string& jsonName)
     {
         const auto& type = p["TYPE"];
         Geom newGeom;
-        if (type == "cube")
+        if (type == "mesh")
         {
-            newGeom.type = CUBE;
-        }
-        else
-        {
-            newGeom.type = SPHERE;
-        }
-        newGeom.materialid = MatNameToID[p["MATERIAL"]];
-        const auto& trans = p["TRANS"];
-        const auto& rotat = p["ROTAT"];
-        const auto& scale = p["SCALE"];
-        newGeom.translation = glm::vec3(trans[0], trans[1], trans[2]);
-        newGeom.rotation = glm::vec3(rotat[0], rotat[1], rotat[2]);
-        newGeom.scale = glm::vec3(scale[0], scale[1], scale[2]);
-        newGeom.transform = utilityCore::buildTransformationMatrix(
-            newGeom.translation, newGeom.rotation, newGeom.scale);
-        newGeom.inverseTransform = glm::inverse(newGeom.transform);
-        newGeom.invTranspose = glm::inverseTranspose(newGeom.transform);
+            const auto& trans = p["TRANS"];
+            const auto& rotat = p["ROTAT"];
+            const auto& scale = p["SCALE"];
+            glm::vec3 translation(trans[0], trans[1], trans[2]);
+            glm::vec3 rotation(rotat[0], rotat[1], rotat[2]);
+            glm::vec3 sc(scale[0], scale[1], scale[2]);
+            glm::mat4 transform = utilityCore::buildTransformationMatrix(translation, rotation, sc);
+            glm::mat4 invT = glm::inverseTranspose(transform);
 
-        geoms.push_back(newGeom);
+            int matId = MatNameToID[p["MATERIAL"]];
+            std::string file = p["FILE"];
+            loadOBJ(file, matId, transform, invT);
+        }
+        else {
+
+
+            if (type == "cube")
+            {
+                newGeom.type = CUBE;
+            }
+            else if (type == "sphere")
+            {
+                newGeom.type = SPHERE;
+            }
+
+            newGeom.materialid = MatNameToID[p["MATERIAL"]];
+            const auto& trans = p["TRANS"];
+            const auto& rotat = p["ROTAT"];
+            const auto& scale = p["SCALE"];
+            newGeom.translation = glm::vec3(trans[0], trans[1], trans[2]);
+            newGeom.rotation = glm::vec3(rotat[0], rotat[1], rotat[2]);
+            newGeom.scale = glm::vec3(scale[0], scale[1], scale[2]);
+            newGeom.transform = utilityCore::buildTransformationMatrix(
+                newGeom.translation, newGeom.rotation, newGeom.scale);
+            newGeom.inverseTransform = glm::inverse(newGeom.transform);
+            newGeom.invTranspose = glm::inverseTranspose(newGeom.transform);
+
+            geoms.push_back(newGeom);
+        }
     }
     const auto& cameraData = data["Camera"];
     Camera& camera = state.camera;
@@ -140,9 +163,15 @@ void Scene::loadFromJSON(const std::string& jsonName)
     float fovx = (atan(xscaled) * 180) / PI;
     camera.fov = glm::vec2(fovx, fovy);
 
+    camera.view = glm::normalize(camera.lookAt - camera.position);
+
     camera.right = glm::normalize(glm::cross(camera.view, camera.up));
+
     camera.pixelLength = glm::vec2(2 * xscaled / (float)camera.resolution.x,
         2 * yscaled / (float)camera.resolution.y);
+    //camera.right = glm::normalize(glm::cross(camera.view, camera.up));
+    //camera.pixelLength = glm::vec2(2 * xscaled / (float)camera.resolution.x,
+    //    2 * yscaled / (float)camera.resolution.y);
 
 	//DOF initial setup
 #if ENABLEDOF
@@ -162,10 +191,117 @@ void Scene::loadFromJSON(const std::string& jsonName)
     if (camera.focalDistance <= 0.f)
         camera.focalDistance = glm::length(camera.lookAt - camera.position);
 #endif
-    camera.view = glm::normalize(camera.lookAt - camera.position);
+    /*camera.view = glm::normalize(camera.lookAt - camera.position);*/
 
     //set up render camera stuff
     int arraylen = camera.resolution.x * camera.resolution.y;
     state.image.resize(arraylen);
     std::fill(state.image.begin(), state.image.end(), glm::vec3());
+}
+
+void Scene::loadOBJ(
+    const std::string& path,
+    int materialId,
+    const glm::mat4& transform,
+    const glm::mat4& invTranspose)
+{
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> objmaterials;
+    std::string warn;
+    std::string err;
+    std::string baseDir = path.substr(0, path.find_last_of("/\\") + 1);
+
+    bool ret = tinyobj::LoadObj(&attrib, &shapes, &objmaterials, &warn, &err, path.c_str(), baseDir.c_str(), true);
+    if (!warn.empty()) std::cerr << "[TinyObj Warning] " << warn << std::endl;
+    if (!err.empty()) std::cerr << "[TinyObj Error] " << err << std::endl;
+    if (!ret)
+    {
+        std::cerr << "Failed to load OBJ: " << path << std::endl;
+        return;
+    }
+
+    MeshGeom mg{};
+    mg.materialid = materialId;
+    mg.indexBegin = (int)triangles.size();
+    glm::vec3 bmin(FLT_MAX), bmax(-FLT_MAX);
+
+    for (const auto& shape : shapes)
+    {
+        size_t index_offset = 0;
+        for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++)
+        {
+            int fv = shape.mesh.num_face_vertices[f];
+            if (fv != 3)
+            {
+                index_offset += fv;
+                continue; 
+            }
+
+            Triangle tri{};
+            tri.materialid = materialId;
+            glm::vec3 vs[3];
+            glm::vec3 ns[3];
+            bool hasNormal = attrib.normals.size() > 0;
+            for (int v = 0; v < 3; v++)
+            {
+                tinyobj::index_t idx = shape.mesh.indices[index_offset + v];
+                vs[v] = glm::vec3(
+                    attrib.vertices[3 * idx.vertex_index + 0],
+                    attrib.vertices[3 * idx.vertex_index + 1],
+                    attrib.vertices[3 * idx.vertex_index + 2]);
+
+                if (hasNormal && idx.normal_index >= 0)
+                {
+                    ns[v] = glm::vec3(
+                        attrib.normals[3 * idx.normal_index + 0],
+                        attrib.normals[3 * idx.normal_index + 1],
+                        attrib.normals[3 * idx.normal_index + 2]);
+                }
+            }
+            index_offset += fv;
+
+            vs[0] = glm::vec3(transform * glm::vec4(vs[0], 1.f));
+            vs[1] = glm::vec3(transform * glm::vec4(vs[1], 1.f));
+            vs[2] = glm::vec3(transform * glm::vec4(vs[2], 1.f));
+
+            glm::vec3 flatN = glm::normalize(glm::cross(vs[1] - vs[0], vs[2] - vs[0]));
+            if (attrib.normals.empty())
+            {
+                ns[0] = ns[1] = ns[2] = flatN;
+            }
+            else
+            {
+
+                for (int v = 0; v < 3; v++)
+                {
+                    ns[v] = glm::normalize(glm::vec3(invTranspose * glm::vec4(ns[v], 0.f)));
+                }
+            }
+
+            tri.v0 = vs[0];
+            tri.v1 = vs[1];
+            tri.v2 = vs[2];
+            tri.n0 = ns[0];
+            tri.n1 = ns[1];
+            tri.n2 = ns[2];
+
+            for (int v = 0; v < 3; v++)
+            {
+                bmin = glm::min(bmin, (&tri.v0)[v]);
+                bmax = glm::max(bmax, (&tri.v0)[v]);
+            }
+            triangles.emplace_back(tri);
+        }
+    }
+    mg.count = (int)triangles.size() - mg.indexBegin;
+    mg.bMin = bmin;
+    mg.bMax = bmax;
+	mg.materialid = materialId;
+    meshes.emplace_back(mg);
+
+    std::cout << "Loaded mesh: " << path
+        << " tris=" << mg.count
+        << " bboxMin=" << glm::to_string(bmin)
+        << " bboxMax=" << glm::to_string(bmax) << std::endl;
 }

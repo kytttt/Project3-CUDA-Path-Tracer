@@ -111,3 +111,76 @@ __host__ __device__ float sphereIntersectionTest(
 
     return glm::length(r.origin - intersectionPoint);
 }
+
+// reference from Moller-Trumbore ray-triangle intersection algorithm
+// https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection.html
+__host__ __device__ float triangleIntersectionTest(
+    Triangle tri,
+    Ray r,
+    glm::vec3& intersectionPoint,
+    glm::vec3& outNormal)
+{
+    const float EPS = 1e-7f;
+    glm::vec3 v0v1 = tri.v1 - tri.v0;
+    glm::vec3 v0v2 = tri.v2 - tri.v0;
+    glm::vec3 pvec = glm::cross(r.direction, v0v2);
+    float det = glm::dot(v0v1, pvec);
+
+    if (fabsf(det) < EPS)
+        return -1.f;
+    float invDet = 1.f / det;
+
+    glm::vec3 tvec = r.origin - tri.v0;
+    float u = glm::dot(tvec, pvec) * invDet;
+    if (u < 0.f || u > 1.f)
+        return -1.f;
+
+    glm::vec3 qvec = glm::cross(tvec, v0v1);
+    float v = glm::dot(r.direction, qvec) * invDet;
+    if (v < 0.f || u + v > 1.f)
+        return -1.f;
+
+    float t = glm::dot(v0v2, qvec) * invDet;
+    if (t <= 0.f)
+        return -1.f;
+
+    intersectionPoint = r.origin + r.direction * t;
+
+    float w = 1.f - u - v;
+    glm::vec3 N = glm::normalize(w * tri.n0 + u * tri.n1 + v * tri.n2);
+    if (glm::dot(N,N) < 1e-12f)
+        N = glm::normalize(glm::cross(v0v1, v0v2));
+    outNormal = N;
+    return t;
+}
+
+
+__host__ __device__ float aabbIntersectionTest(
+    Ray r,
+    const glm::vec3& bmin,
+    const glm::vec3& bmax)
+{
+    float tmin = -FLT_MAX;
+    float tmax = FLT_MAX;
+
+    for (int i = 0; i < 3; i++) {
+        float origin = r.origin[i];
+        float dir = r.direction[i];
+
+        if (fabsf(dir) < 1e-8f) {
+            if (origin < bmin[i] || origin > bmax[i])
+                return -1.f;
+        }
+        else {
+            float t1 = (bmin[i] - origin) / dir;
+            float t2 = (bmax[i] - origin) / dir;
+            if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; }
+            tmin = fmaxf(tmin, t1);
+            tmax = fminf(tmax, t2);
+            if (tmin > tmax) return -1.f;
+        }
+    }
+
+    if (tmax < 0.f) return -1.f;
+    return (tmin > 0.f) ? tmin : tmax;
+}

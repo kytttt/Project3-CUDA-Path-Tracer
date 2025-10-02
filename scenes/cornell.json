@@ -30,7 +30,7 @@
         },
         "glass": {
             "TYPE": "Refractive",
-            "RGB": [1.0, 1.0, 1.0],
+            "RGB": [0.2, 0.4, 1.0],
             "IOR": 1.5,
             "REFRACTIVE": 1.0,
             "REFLECTIVE": 0.0,
@@ -44,6 +44,20 @@
             "REFLECTIVE": 0.0,
             "THIN":0.0,
             "FLIP":1.0
+        },
+        "water": {
+            "TYPE": "Refractive",
+            "RGB": [1.0, 1.0, 1.0],
+            "IOR": 1.33,
+            "REFRACTIVE": 1.0,
+            "REFLECTIVE": 0.0,
+            "THIN":0.0
+        },
+        "specular_green":
+        {
+            "TYPE":"Specular",
+            "RGB":[0.35, 0.85, 0.35],
+            "ROUGHNESS":0.0
         }
     },
     "Camera": {
@@ -57,7 +71,7 @@
     "UP": [0.0, 1.0, 0.0],
 
     "APERTURE": 2.0,
-    "FOCAL_DISTANCE": 10.5
+    "FOCAL_DISTANCE": 9
 
     },
     "Objects":
@@ -120,10 +134,17 @@
         },
         {
             "TYPE": "sphere",
-            "MATERIAL": "glass_inside",
+            "MATERIAL": "water",
             "TRANS": [2.0, 3.0, 1.5],
             "ROTAT": [0.0, 0.0, 0.0],
             "SCALE": [2.49, 2.49, 2.49]
+        },
+        {
+            "TYPE": "sphere",
+            "MATERIAL": "specular_green",
+            "TRANS": [1.0, 6.0, 1.5],
+            "ROTAT": [0.0, 0.0, 0.0],
+            "SCALE": [1, 1, 1]
         }
 
     ]
