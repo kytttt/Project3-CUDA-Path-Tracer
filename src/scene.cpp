@@ -192,7 +192,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
         camera.focalDistance = glm::length(camera.lookAt - camera.position);
 #endif
     /*camera.view = glm::normalize(camera.lookAt - camera.position);*/
-
+    buildBVH();
     //set up render camera stuff
     int arraylen = camera.resolution.x * camera.resolution.y;
     state.image.resize(arraylen);
@@ -304,4 +304,103 @@ void Scene::loadOBJ(
         << " tris=" << mg.count
         << " bboxMin=" << glm::to_string(bmin)
         << " bboxMax=" << glm::to_string(bmax) << std::endl;
+}
+
+
+struct CentroidBounds {
+    glm::vec3 bmin{ FLT_MAX };
+    glm::vec3 bmax{ -FLT_MAX };
+    void expand(const glm::vec3& center) 
+    {
+        bmin = glm::min(bmin, center);
+        bmax = glm::max(bmax, center);
+    }
+    int maxAxis() const 
+    {
+        glm::vec3 e = bmax - bmin;
+        if (e.x > e.y && e.x > e.z) return 0;
+        else if (e.y > e.x && e.y > e.z) return 1;
+        else return 2;
+    }
+};
+
+int buildBVHRecursive(
+    const std::vector<Triangle>& tris,
+    std::vector<int>& indices,
+    int start, int end,
+    std::vector<BVHNode>& outNodes,
+    int leafThreshold)
+{
+    BVHNode node{};
+
+    glm::vec3 bmin(FLT_MAX), bmax(-FLT_MAX);
+    CentroidBounds cb;
+    for (int i = start; i < end; ++i) 
+    {
+        const Triangle& t = tris[indices[i]];
+        bmin = glm::min(bmin, glm::min(t.v0, glm::min(t.v1, t.v2)));
+        bmax = glm::max(bmax, glm::max(t.v0, glm::max(t.v1, t.v2)));
+        glm::vec3 c = (t.v0 + t.v1 + t.v2) * (1.f / 3.f);
+        cb.expand(c);
+    }
+    node.bMin = bmin;
+    node.bMax = bmax;
+
+    int triCount = end - start;
+    if (triCount <= leafThreshold) 
+    {
+        node.left = node.right = -1;
+        node.start = start;
+        node.count = triCount;
+        int idx = (int)outNodes.size();
+        outNodes.push_back(node);
+        return idx;
+    }
+
+    int axis = cb.maxAxis();
+    float midCoord = 0.5f * (cb.bmin[axis] + cb.bmax[axis]);
+
+    int mid = start;
+    for (int i = start; i < end; ++i) 
+    {
+        const Triangle& t = tris[indices[i]];
+        glm::vec3 c = (t.v0 + t.v1 + t.v2) * (1.f / 3.f);
+        if (c[axis] < midCoord)
+            std::swap(indices[i], indices[mid++]);
+    }
+    if (mid == start || mid == end) 
+    {
+        mid = start + (triCount / 2);
+    }
+
+    int idx = (int)outNodes.size();
+    outNodes.push_back(BVHNode{}); 
+
+    int leftChild = buildBVHRecursive(tris, indices, start, mid, outNodes, leafThreshold);
+    int rightChild = buildBVHRecursive(tris, indices, mid, end, outNodes, leafThreshold);
+
+    node.left = leftChild;
+    node.right = rightChild;
+    node.start = -1;
+    node.count = 0;
+    outNodes[idx] = node;
+    return idx;
+}
+
+void Scene::buildBVH()
+{
+    if (triangles.empty())
+        return;
+
+    nodeIndices.resize(triangles.size());
+    std::iota(nodeIndices.begin(), nodeIndices.end(), 0);
+
+    bvh.clear();
+    bvh.reserve(triangles.size() * 2);
+
+    const int leafThreshold = 4;
+    buildBVHRecursive(triangles, nodeIndices, 0, (int)triangles.size(), bvh, leafThreshold);
+
+    std::cout << "BVH  nodes=" << bvh.size()
+        << " tris=" << triangles.size() << std::endl;
 }

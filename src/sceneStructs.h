@@ -36,6 +36,16 @@ struct MeshGeom
     glm::vec3 bMax;
 };
 
+struct BVHNode
+{
+    glm::vec3 bMin;
+    glm::vec3 bMax;
+    int left;
+    int right; 
+    int start;
+    int count;
+};
+
 struct Ray
 {
     glm::vec3 origin;

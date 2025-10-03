@@ -90,7 +90,11 @@ static ShadeableIntersection* dev_intersections_sorted = NULL;
 static bool sortByMaterial = true; 
 static MeshGeom* dev_meshes = NULL;
 static Triangle* dev_triangles = NULL;
+static BVHNode* dev_bvhNodes = nullptr;
+static int* dev_bvhIndices = nullptr;
+static int  dev_nodeCount = 0;
 #define enableAA  1
+#define enableBVH 1
 
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
@@ -134,6 +138,17 @@ void pathtraceInit(Scene* scene)
         cudaMalloc(&dev_triangles, scene->triangles.size() * sizeof(Triangle));
         cudaMemcpy(dev_triangles, scene->triangles.data(), scene->triangles.size() * sizeof(Triangle), cudaMemcpyHostToDevice);
     }
+    if (!scene->bvh.empty()) 
+    {
+        dev_nodeCount = (int)scene->bvh.size();
+        cudaMalloc(&dev_bvhNodes, dev_nodeCount * sizeof(BVHNode));
+        cudaMemcpy(dev_bvhNodes, scene->bvh.data(),
+            dev_nodeCount * sizeof(BVHNode), cudaMemcpyHostToDevice);
+
+        cudaMalloc(&dev_bvhIndices, scene->nodeIndices.size() * sizeof(int));
+        cudaMemcpy(dev_bvhIndices, scene->nodeIndices.data(),
+            scene->nodeIndices.size() * sizeof(int), cudaMemcpyHostToDevice);
+    }
     checkCUDAError("pathtraceInit");
 }
 
@@ -151,6 +166,8 @@ void pathtraceFree()
     cudaFree(dev_intersections_sorted);
     cudaFree(dev_meshes);
     cudaFree(dev_triangles);
+    cudaFree(dev_bvhNodes);
+    cudaFree(dev_bvhIndices);
     checkCUDAError("pathtraceFree");
 }
 
@@ -171,6 +188,48 @@ __host__ __device__ inline glm::vec2 concentricDisk(float u1, float u2)
         theta = (PI / 2.f) - (PI / 4.f) * (sx / sy);
     }
     return r * glm::vec2(cosf(theta), sinf(theta));
+}
+
+__device__ void traverseBVHTriangles(
+    const Ray& ray,
+    const BVHNode* nodes,
+    const int* triIndices,
+    const Triangle* tris,
+    float& t_min,
+    int& hitMaterial,
+    glm::vec3& hitNormal)
+{
+    if (!nodes) return;
+    int stack[64];
+    int sp = 0;
+    stack[sp++] = 0; 
+
+    while (sp) {
+        int ni = stack[--sp];
+        const BVHNode& node = nodes[ni];
+
+        float hb = aabbIntersectionTest(ray, node.bMin, node.bMax);
+        if (hb < 0.f || hb > t_min) continue;
+
+        if (node.count > 0) {
+            for (int i = 0; i < node.count; ++i) {
+                int ti = triIndices[node.start + i];
+                const Triangle& tri = tris[ti];
+                glm::vec3 tmpP, tmpN;
+                float t = triangleIntersectionTest(tri, ray, tmpP, tmpN);
+                if (t > 0.f && t < t_min) {
+                    t_min = t;
+                    hitMaterial = tri.materialid;
+                    hitNormal = tmpN;
+                }
+            }
+        }
+        else {
+ 
+            if (node.left >= 0)  stack[sp++] = node.left;
+            if (node.right >= 0) stack[sp++] = node.right;
+        }
+    }
 }
 
 /**
@@ -333,6 +392,58 @@ __global__ void computeIntersections(
             intersections[path_index].materialId = hit_material;
             intersections[path_index].surfaceNormal = normal;
         }
+    }
+}
+
+__global__ void computeIntersectionsBVH(
+    int depth,
+    int num_paths,
+    PathSegment* pathSegments,
+    Geom* geoms,
+    int geoms_size,
+    ShadeableIntersection* intersections,
+    const BVHNode* bvh,
+    int nodeCount,
+    const int* bvhIndices,
+    const Triangle* triangles)
+{
+    int path_index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (path_index >= num_paths) return;
+
+    PathSegment pathSegment = pathSegments[path_index];
+
+    float t_min = FLT_MAX;
+    int hit_material = -1;
+    glm::vec3 normal(0.f);
+    bool outside = true;
+    glm::vec3 tmp_intersect, tmp_normal;
+
+    for (int i = 0; i < geoms_size; i++)
+    {
+        Geom& g = geoms[i];
+        float t = -1.f;
+        if (g.type == CUBE) {
+            t = boxIntersectionTest(g, pathSegment.ray, tmp_intersect, tmp_normal, outside);
+        }
+        else if (g.type == SPHERE) {
+            t = sphereIntersectionTest(g, pathSegment.ray, tmp_intersect, tmp_normal, outside);
+        }
+        if (t > 0.f && t < t_min) {
+            t_min = t;
+            hit_material = g.materialid;
+            normal = tmp_normal;
+        }
+    }
+    
+    traverseBVHTriangles(pathSegment.ray, bvh, bvhIndices, triangles, t_min, hit_material, normal);
+
+    if (hit_material == -1) {
+        intersections[path_index].t = -1.f;
+    }
+    else {
+        intersections[path_index].t = t_min;
+        intersections[path_index].materialId = hit_material;
+        intersections[path_index].surfaceNormal = normal;
     }
 }
 
@@ -558,6 +669,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
     // Shoot ray into scene, bounce between objects, push shading chunks
 
     bool iterationComplete = false;
+	bool bvhEnabled = enableBVH;
     while (!iterationComplete)
     {
         // clean shading chunks
@@ -565,18 +677,34 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
         // tracing
         dim3 numblocksPathSegmentTracing = (num_paths + blockSize1d - 1) / blockSize1d;
-        computeIntersections<<<numblocksPathSegmentTracing, blockSize1d>>> (
-            depth,
-            num_paths,
-            dev_paths,
-            dev_geoms,
-            hst_scene->geoms.size(),
-            dev_intersections,
-			dev_meshes,
-			hst_scene->meshes.size(),
-			dev_triangles,
-			hst_scene->triangles.size()
-        );
+        if (!bvhEnabled) {
+            computeIntersections << <numblocksPathSegmentTracing, blockSize1d >> > (
+                depth,
+                num_paths,
+                dev_paths,
+                dev_geoms,
+                hst_scene->geoms.size(),
+                dev_intersections,
+                dev_meshes,
+                hst_scene->meshes.size(),
+                dev_triangles,
+                hst_scene->triangles.size()
+                );
+        }
+        else {
+            computeIntersectionsBVH <<<numblocksPathSegmentTracing, blockSize1d >> > (
+                depth,
+                num_paths,
+                dev_paths,
+                dev_geoms,
+                (int)hst_scene->geoms.size(),
+                dev_intersections,
+                dev_bvhNodes,
+                dev_nodeCount,
+                dev_bvhIndices,
+                dev_triangles
+                );
+        }
         checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();
 
