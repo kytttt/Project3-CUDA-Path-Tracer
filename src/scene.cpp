@@ -14,6 +14,8 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "../third_party/tinyobjloader-release/tiny_obj_loader.h"
 
+#include "../external/include/stb_image.h"
+
 #define ENABLEDOF 0
 using namespace std;
 using json = nlohmann::json;
@@ -41,6 +43,12 @@ void Scene::loadFromJSON(const std::string& jsonName)
     json data = json::parse(f);
     const auto& materialsData = data["Materials"];
     std::unordered_map<std::string, uint32_t> MatNameToID;
+    if (data.contains("Environment")) {
+        const auto& env = data["Environment"];
+        if (loadLatLongEnvironment(env)) {
+            convertLatLongToCubemap(env.contains("CUBEMAP_RES") ? (int)env["CUBEMAP_RES"] : 512);
+        }
+    }
     for (const auto& item : materialsData.items())
     {
         const auto& name = item.key();
@@ -403,4 +411,83 @@ void Scene::buildBVH()
 
     std::cout << "BVH  nodes=" << bvh.size()
         << " tris=" << triangles.size() << std::endl;
+}
+
+
+bool Scene::loadLatLongEnvironment(const nlohmann::json& envJson) {
+    if (!envJson.contains("TYPE") || envJson["TYPE"] != "LatLong") return false;
+    std::string file = envJson["FILE"];
+    int w, h, comp;
+    stbi_set_flip_vertically_on_load(false);
+    float* data = stbi_loadf(file.c_str(), &w, &h, &comp, 3);
+    if (!data) {
+        std::cerr << "Failed to load HDR: " << file << std::endl;
+        return false;
+    }
+    latlongEnv.width = w;
+    latlongEnv.height = h;
+    latlongEnv.pixels.resize(w * h);
+    for (int i = 0; i < w * h; ++i) {
+        latlongEnv.pixels[i] = glm::vec3(
+            data[3 * i + 0],
+            data[3 * i + 1],
+            data[3 * i + 2]);
+    }
+    stbi_image_free(data);
+    latlongEnv.intensity = envJson.contains("INTENSITY") ? (float)envJson["INTENSITY"] : 1.f;
+    latlongEnv.loaded = true;
+    std::cout << "Loaded latlong environment: " << file
+        << " (" << w << "x" << h << ")\n";
+    return true;
+}
+
+bool Scene::convertLatLongToCubemap(int faceRes) {
+    if (!latlongEnv.loaded) return false;
+    static const glm::ivec3 faceDir[6] = {
+        { 1, 0, 0},{-1, 0, 0},{ 0, 1, 0},{ 0,-1, 0},{ 0, 0, 1},{ 0, 0,-1}
+    };
+    static const glm::ivec3 upVec[6] = {
+        {0,1,0},{0,1,0},{0,0,-1},{0,0,1},{0,1,0},{0,1,0}
+    };
+    cubemap.loaded = true;
+    cubemap.intensity = latlongEnv.intensity;
+    for (int f = 0; f < 6; ++f) {
+        cubemap.width[f] = faceRes;
+        cubemap.height[f] = faceRes;
+        cubemap.faces[f].resize(faceRes * faceRes);
+        glm::vec3 F = glm::vec3(faceDir[f]);
+        glm::vec3 U = glm::normalize(glm::vec3(upVec[f]));
+        glm::vec3 R = glm::normalize(glm::cross(U, F));
+        for (int y = 0; y < faceRes; ++y) {
+            for (int x = 0; x < faceRes; ++x) {
+                float u = (2.f * (x + 0.5f) / faceRes) - 1.f;
+                float v = (2.f * (y + 0.5f) / faceRes) - 1.f;
+                glm::vec3 dir = glm::normalize(F + u * R + (-v) * U);
+                
+                float phi = atan2f(dir.z, dir.x);
+                float theta = acosf(fminf(fmaxf(dir.y, -1.f), 1.f));
+                float su = (phi + PI) * (0.5f / PI);
+                float sv = theta * (1.f / PI);
+                float fx = su * (latlongEnv.width - 1);
+                float fy = sv * (latlongEnv.height - 1);
+                int x0 = (int)floorf(fx);
+                int y0 = (int)floorf(fy);
+                int x1 = std::min(x0 + 1, latlongEnv.width - 1);
+                int y1 = std::min(y0 + 1, latlongEnv.height - 1);
+                float tx = fx - x0;
+                float ty = fy - y0;
+                auto& px = latlongEnv.pixels;
+                glm::vec3 c00 = px[y0 * latlongEnv.width + x0];
+                glm::vec3 c10 = px[y0 * latlongEnv.width + x1];
+                glm::vec3 c01 = px[y1 * latlongEnv.width + x0];
+                glm::vec3 c11 = px[y1 * latlongEnv.width + x1];
+                glm::vec3 cx0 = c00 * (1 - tx) + c10 * tx;
+                glm::vec3 cx1 = c01 * (1 - tx) + c11 * tx;
+                glm::vec3 c = cx0 * (1 - ty) + cx1 * ty;
+                cubemap.faces[f][y * faceRes + x] = c;
+            }
+        }
+    }
+    std::cout << "Converted latlong HDR to cubemap " << faceRes << "x" << faceRes << std::endl;
+    return true;
 }

@@ -46,6 +46,42 @@ struct BVHNode
     int count;
 };
 
+enum CubeFace {
+    FACE_PX = 0,
+    FACE_NX = 1,
+    FACE_PY = 2,
+    FACE_NY = 3,
+    FACE_PZ = 4,
+    FACE_NZ = 5
+};
+
+struct HostCubeMap 
+{
+    bool loaded = false;
+    float intensity = 1.f;
+    int width[6]{};
+    int height[6]{};
+    std::vector<glm::vec3> faces[6]; 
+};
+
+struct DeviceCubeMap 
+{
+    int width[6];
+    int height[6];
+    glm::vec3* facePtrs[6];
+    float intensity;
+    int hasEnv;
+};
+
+struct HostLatLongEnv 
+{
+    bool loaded = false;
+    int width = 0;
+    int height = 0;
+    std::vector<glm::vec3> pixels;
+    float intensity = 1.f;
+};
+
 struct Ray
 {
     glm::vec3 origin;

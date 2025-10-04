@@ -1,0 +1,49 @@
+# www.mecabricks.com
+newmtl Color_24
+Ka 1.0 1.0 1.0
+Kd 0.9725490196078431 0.7803921568627451 0.09411764705882353
+Ks 0.0 0.0 0.0
+Ni 1.5
+d 1
+illum 2
+
+
+newmtl Color_26
+Ka 1.0 1.0 1.0
+Kd 0.06274509803921569 0.06274509803921569 0.06274509803921569
+Ks 0.0 0.0 0.0
+Ni 1.5
+d 1
+illum 2
+
+
+newmtl Color_26_56630_bump
+Ka 1.0 1.0 1.0
+Kd 0.06274509803921569 0.06274509803921569 0.06274509803921569
+Ks 0.0 0.0 0.0
+Ni 1.5
+d 1
+illum 2
+map_bump maps/bump/56630_bump.png
+
+
+newmtl Decoration_3626d783
+Kd 1.0 1.0 1.0
+map_Kd maps/decoration/3626d783.png
+Ka 1.0 1.0 1.0
+Ks 0.0 0.0 0.0
+Ni 1.5
+d 1.0
+illum 2
+
+
+newmtl Decoration_3814d676
+Kd 1.0 1.0 1.0
+map_Kd maps/decoration/3814d676.png
+Ka 1.0 1.0 1.0
+Ks 0.0 0.0 0.0
+Ni 1.5
+d 1.0
+illum 2
+
+

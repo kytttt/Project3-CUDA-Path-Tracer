@@ -96,6 +96,34 @@ static int  dev_nodeCount = 0;
 #define enableAA  1
 #define enableBVH 1
 
+__constant__ DeviceCubeMap dev_envMap; // constant copy of descriptor
+static glm::vec3* dev_envFaces[6] = { nullptr,nullptr,nullptr,nullptr,nullptr,nullptr };
+
+static void uploadEnvironment(const Scene* scene) {
+    if (!scene->cubemap.loaded) {
+        DeviceCubeMap tmp{};
+        tmp.hasEnv = 0;
+        cudaMemcpyToSymbol(dev_envMap, &tmp, sizeof(DeviceCubeMap));
+        return;
+    }
+    DeviceCubeMap desc{};
+    desc.intensity = scene->cubemap.intensity;
+    desc.hasEnv = 1;
+    for (int i = 0; i < 6; ++i) {
+        int count = (int)scene->cubemap.faces[i].size();
+        if (count == 0) { desc.hasEnv = 0; continue; }
+        cudaMalloc(&dev_envFaces[i], count * sizeof(glm::vec3));
+        cudaMemcpy(dev_envFaces[i], scene->cubemap.faces[i].data(),
+            count * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+        desc.facePtrs[i] = dev_envFaces[i];
+        desc.width[i] = scene->cubemap.width[i];
+        desc.height[i] = scene->cubemap.height[i];
+    }
+    cudaMemcpyToSymbol(dev_envMap, &desc, sizeof(DeviceCubeMap));
+}
+
+
+
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
     guiData = imGuiData;
@@ -149,6 +177,7 @@ void pathtraceInit(Scene* scene)
         cudaMemcpy(dev_bvhIndices, scene->nodeIndices.data(),
             scene->nodeIndices.size() * sizeof(int), cudaMemcpyHostToDevice);
     }
+	uploadEnvironment(scene);
     checkCUDAError("pathtraceInit");
 }
 
@@ -168,6 +197,12 @@ void pathtraceFree()
     cudaFree(dev_triangles);
     cudaFree(dev_bvhNodes);
     cudaFree(dev_bvhIndices);
+    for (int i = 0; i < 6; ++i) {
+        if (dev_envFaces[i]) {
+            cudaFree(dev_envFaces[i]);
+            dev_envFaces[i] = nullptr;
+        }
+    }
     checkCUDAError("pathtraceFree");
 }
 
@@ -447,6 +482,52 @@ __global__ void computeIntersectionsBVH(
     }
 }
 
+__device__ inline glm::vec3 sampleCubemapDir(const DeviceCubeMap& env, const glm::vec3& d) {
+    if (!env.hasEnv) return BACKGROUND_COLOR;
+    glm::vec3 dir = glm::normalize(d);
+    float ax = fabsf(dir.x), ay = fabsf(dir.y), az = fabsf(dir.z);
+    int face;
+    float u, v;
+    if (ax >= ay && ax >= az) { // X major
+        if (dir.x > 0) { face = FACE_PX; u = -dir.z / ax; v = -dir.y / ax; }
+        else { face = FACE_NX; u = dir.z / ax; v = -dir.y / ax; }
+    }
+    else if (ay >= ax && ay >= az) { // Y major
+        if (dir.y > 0) { face = FACE_PY; u = dir.x / ay; v = dir.z / ay; }
+        else { face = FACE_NY; u = dir.x / ay; v = -dir.z / ay; }
+    }
+    else { // Z major
+        if (dir.z > 0) { face = FACE_PZ; u = dir.x / az; v = -dir.y / az; }
+        else { face = FACE_NZ; u = -dir.x / az; v = -dir.y / az; }
+    }
+    // map from [-1,1] to [0,1]
+    u = 0.5f * (u + 1.f);
+    v = 0.5f * (v + 1.f);
+
+    int w = env.width[face];
+    int h = env.height[face];
+    if (w <= 0 || h <= 0) return BACKGROUND_COLOR;
+
+    float fx = u * (w - 1);
+    float fy = v * (h - 1);
+    int x0 = (int)floorf(fx);
+    int y0 = (int)floorf(fy);
+    int x1 = glm::min(x0 + 1, w - 1);
+    int y1 = glm::min(y0 + 1, h - 1);
+    float tx = fx - x0;
+    float ty = fy - y0;
+
+    const glm::vec3* facePtr = env.facePtrs[face];
+    glm::vec3 c00 = facePtr[y0 * w + x0];
+    glm::vec3 c10 = facePtr[y0 * w + x1];
+    glm::vec3 c01 = facePtr[y1 * w + x0];
+    glm::vec3 c11 = facePtr[y1 * w + x1];
+    glm::vec3 cx0 = c00 * (1 - tx) + c10 * tx;
+    glm::vec3 cx1 = c01 * (1 - tx) + c11 * tx;
+    return (cx0 * (1 - ty) + cx1 * ty) * env.intensity;
+}
+
+
 // LOOK: "fake" shader demonstrating what you might do with the info in
 // a ShadeableIntersection, as well as how to use thrust's random number
 // generator. Observe that since the thrust random number generator basically
@@ -518,8 +599,20 @@ __global__ void shadeDiffuseBSDF(
     ShadeableIntersection isect = shadeableIntersections[idx];
     if (isect.t < 0.f)
     {
-        seg.color *= BACKGROUND_COLOR;
+        //seg.color *= BACKGROUND_COLOR;
+        //seg.remainingBounces = 0;
+        DeviceCubeMap cube;
+        memcpy(&cube, &dev_envMap, sizeof(DeviceCubeMap));
+
+        glm::vec3 L(0.f);
+        if (cube.hasEnv) {
+            L = sampleCubemapDir(cube, seg.ray.direction);
+        }
+        else
+			L = BACKGROUND_COLOR;
+        seg.color *= L;
         seg.remainingBounces = 0;
+        return;
         return;
     }
 
