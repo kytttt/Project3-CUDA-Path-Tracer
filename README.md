@@ -53,7 +53,7 @@ The sphere in the center of top-left picture and the bunny in the bottom-left pi
 
 
 ## Depth of Field
-Below pictures are the comparison of using not using physically-based depth-of-field. The scene contains an ideal specular green sphere, a white sphere enables probability splits between diffuse and specular, and a hollow glass cube. To load this scene, you can just set `../scenes/sphere.json` in `Project Properties`. The right picture uses `"APERTURE": 2.0`,`"FOCAL_DISTANCE": 11.5`, which makes object other than the center one will get blurred.
+Below pictures are the comparison of using not using physically-based depth-of-field. The scene contains an ideal specular green sphere, a white sphere enables probability splits between diffuse and specular, and a hollow glass cube. To load this scene, you can just set `../scenes/cornell.json` in `Project Properties`. The right picture uses `"APERTURE": 2.0`,`"FOCAL_DISTANCE": 11.5`, which makes object other than the center one will get blurred.
 
 </table>
 <table>
@@ -86,7 +86,7 @@ I used refraction material, subsurface material (Sun Wukong's skin) and also dif
 
 ## Russian roulette path termination
 To optimize path tracing performance, I implemented Russian Roulette to probabilistically terminate rays with low contribution after several bounces. This technique reduces unnecessary computation from rays that contribute little to the final image while keeping the overall estimator unbiased. This algorithm give brighter rays (higher contribution) a higher chance to survive, and if the path survives, its color is divided by Russian Roulette probability to preserve energy.   
-To enable this, just set `#define enableRussianRoulette 1`. The performace increases from 68 FPS to 80 FPS in my  `../scenes/sphere.json`.
+To enable this, just set `#define enableRussianRoulette 1`. The performace increases from 68 FPS to 80 FPS in my  `../scenes/cornell.json`.
 
 ## BVH
 To significantly improve ray tracing performance, I implemented a Bounding Volume Hierarchy (BVH) for efficient ray–scene intersection. Take the bunny I showed before as an example. Before I add BVH, it only have 1.3 FPS, and took me an hour to run 5000 iterations. But after having BVH, it can be faster than 50 FPS, which save my time a lot. To eanble this, just set `#define enableBVH 1`
