@@ -139,9 +139,9 @@ __host__ __device__ void scatterRay(
     if (m.hasSubsurface > 0.f) {
         
         const float edgeBoost      = 1.0f;     
-        const float energyClamp    = 8.0f;  
-        const float mixLambertFrac = 0.15f;
-        const float maxRadiusMul   = 4.0f;
+        const float energyClamp    = 2.0f;  
+        const float mixLambertFrac = 0.35f;
+        const float maxRadiusMul   = 6.0f;
         const float gPhase         = m.hgG;
         const float minSigma       = 1e-6f;
 

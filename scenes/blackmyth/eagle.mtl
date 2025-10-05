@@ -1,0 +1,68 @@
+# Blender 4.5.3 LTS MTL File: 'None'
+# www.blender.org
+
+newmtl M_Weapon_Bow_03A_Weapon_Layers
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd C:/T_Weapon_Bow_03A_D.png
+map_d C:/T_Weapon_Bow_03A_D.png
+map_Bump -bm 1.000000 C:/T_Weapon_Bow_03A_N.png
+
+newmtl M_hgs_tianbing_01_haircards_layers
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd C:/T_hgs_tianbing_01_hair_id.png
+map_refl C:/T_hgs_tianbing_01_hair_m.png
+map_d C:/T_hgs_tianbing_01_hair_id.png
+
+newmtl M_hgs_tianbing_02_toukui_layers
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd C:/T_hgs_tianbing_02_toukui_d.png
+map_d C:/T_hgs_tianbing_02_toukui_d.png
+map_Bump -bm 1.000000 C:/T_hgs_tianbing_02_toukui_n.png
+
+newmtl M_hgs_tianbing_03_x_layers
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd C:/T_hgs_tianbing_03_x_d.png
+map_d C:/T_hgs_tianbing_03_x_d.png
+map_Bump -bm 1.000000 C:/T_hgs_tianbing_03_x_n.png
+
+newmtl M_hgs_tianbing_03_y_layers
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd C:/T_hgs_tianbing_03_y_d.png
+map_d C:/T_hgs_tianbing_03_y_d.png
+map_Bump -bm 1.000000 C:/T_hgs_tianbing_03_y_n.png
+
+newmtl M_hgs_tianbing_03_z_layers
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd C:/T_hgs_tianbing_03_z_d.png
+map_d C:/T_hgs_tianbing_03_z_d.png
+map_Bump -bm 1.000000 C:/T_hgs_tianbing_03_z_n.png

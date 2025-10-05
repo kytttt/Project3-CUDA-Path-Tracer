@@ -3,7 +3,7 @@
 #include "sceneStructs.h"
 #include <vector>
 #include <json.hpp>
-
+namespace tinyobj { struct material_t; }
 class Scene
 {
 private:
@@ -15,6 +15,10 @@ private:
 	void buildBVH();
     bool loadLatLongEnvironment(const nlohmann::json& envJson);
     bool convertLatLongToCubemap(int faceRes);
+    int getOrCreateMaterialFromTiny(const tinyobj::material_t& tm, int fallbackId);
+    int mapLocalMatIdxToGlobal(int localIdx,
+        const std::vector<tinyobj::material_t>& objmaterials,
+        int fallbackId);
 public:
     Scene(std::string filename);
 
@@ -27,4 +31,5 @@ public:
     HostCubeMap cubemap;
     RenderState state;
     HostLatLongEnv latlongEnv;
+    std::unordered_map<std::string, int> mtlNameToGlobalId;
 };

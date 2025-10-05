@@ -1,6 +1,6 @@
 {    "Environment": {
     "TYPE": "LatLong",
-    "FILE": "../scenes/qwantani_sunset_puresky_4k.hdr",
+    "FILE": "../scenes/749-hdri-skies-com",
     "INTENSITY": 1.5
 },
     "Materials":
@@ -93,11 +93,11 @@
 
         {
             "TYPE": "mesh",
-            "FILE": "../scenes/batman.obj",
-            "MATERIAL": "diffuse_white",
+            "FILE": "../scenes/wukong.obj",
+            "MATERIAL": "specular_white",
             "TRANS": [0.0, 0.5, -1.2],
             "ROTAT": [0.0, 0.0, 0.0],
-            "SCALE": [0.1, 0.1, 0.1]
+            "SCALE": [1.0, 1.0, 1.0]
         }
 
     ]

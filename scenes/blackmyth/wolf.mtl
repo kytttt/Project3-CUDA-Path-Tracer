@@ -1,0 +1,55 @@
+# Blender 4.5.3 LTS MTL File: 'None'
+# www.blender.org
+
+newmtl Eye
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/GYCY_Lingxuzi_02_eye.png
+
+newmtl MF_GYCY_LingXuZi_02_Body
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd C:/GYCY_LingXuZi_02_shenti_D.png
+map_d C:/GYCY_LingXuZi_02_shenti_D.png
+map_Bump -bm 1.000000 C:/GYCY_LingXuZi_02_shenti_N.png
+
+newmtl MF_GYCY_LingXuZi_02_Head
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd C:/GYCY_LingXuZi_02_tou_D.png
+map_d C:/GYCY_LingXuZi_02_tou_D.png
+map_Bump -bm 1.000000 C:/GYCY_LingXuZi_02_tou_N.png
+
+newmtl MF_GYCY_LingXuZi_02_KouQiang
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd C:/GYCY_LingXuZi_02_kouqiang_D.png
+map_d C:/GYCY_LingXuZi_02_kouqiang_D.png
+map_Bump -bm 1.000000 C:/GYCY_LingXuZi_02_kouqiang_N.png
+
+newmtl M_gycy_dbl_01_main_haircard
+Ns 250.000000
+Ka 0.600000 0.600000 0.600000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 3
+map_Kd C:/dbl_mask.png
+map_d C:/fur.png

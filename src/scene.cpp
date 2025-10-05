@@ -46,7 +46,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
     if (data.contains("Environment")) {
         const auto& env = data["Environment"];
         if (loadLatLongEnvironment(env)) {
-            convertLatLongToCubemap(env.contains("CUBEMAP_RES") ? (int)env["CUBEMAP_RES"] : 512);
+            convertLatLongToCubemap(env.contains("CUBEMAP_RES") ? (int)env["CUBEMAP_RES"] : 800);
         }
     }
     for (const auto& item : materialsData.items())
@@ -69,7 +69,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
         else if (p["TYPE"] == "Specular")
         {
             const auto& col = p["RGB"];
-            newMaterial.color = glm::vec3(0.f);//glm::vec3(col[0], col[1], col[2]);
+            newMaterial.color = glm::vec3(col[0], col[1], col[2]);
 			newMaterial.hasReflective = 1.f;
             newMaterial.specular.color = glm::vec3(col[0], col[1], col[2]);
         }
@@ -79,7 +79,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
 			newMaterial.color = glm::vec3(col[0], col[1], col[2]);
             newMaterial.hasRefractive = p["REFRACTIVE"];
             newMaterial.indexOfRefraction = p["IOR"];
-			newMaterial.hasReflective = p["REFLECTIVE"];
+			newMaterial.hasReflective = p.contains("REFLECTIVE")? p["REFLECTIVE"] : 0.f;
             newMaterial.specular.color = p.contains("SPECULAR_RGB")
                 ? glm::vec3(p["SPECULAR_RGB"][0], p["SPECULAR_RGB"][1], p["SPECULAR_RGB"][2])
                 : glm::vec3(1.f);
@@ -99,8 +99,12 @@ void Scene::loadFromJSON(const std::string& jsonName)
 			newMaterial.emittance = p.contains("EMITTANCE") ? p["EMITTANCE"] : 0.f;
         }
 
-        MatNameToID[name] = materials.size();
+        //MatNameToID[name] = materials.size();
+        //mtlNameToGlobalId[name] = materials.size();
+        //materials.emplace_back(newMaterial);
         materials.emplace_back(newMaterial);
+        MatNameToID[name] = (uint32_t)materials.size() - 1;
+        mtlNameToGlobalId[name] = (int)materials.size() - 1;
     }
     const auto& objectsData = data["Objects"];
     for (const auto& p : objectsData)
@@ -118,7 +122,18 @@ void Scene::loadFromJSON(const std::string& jsonName)
             glm::mat4 transform = utilityCore::buildTransformationMatrix(translation, rotation, sc);
             glm::mat4 invT = glm::inverseTranspose(transform);
 
-            int matId = MatNameToID[p["MATERIAL"]];
+            //int matId = MatNameToID[p["MATERIAL"]];
+            int matId = 0; // fallback
+            {
+                auto it = MatNameToID.find(p["MATERIAL"]);
+                if (it != MatNameToID.end()) {
+                    matId = (int)it->second;
+                }
+                else {
+                    std::cerr << "[Scene] MATERIAL not found in JSON: "
+                        << (std::string)p["MATERIAL"] << " -> using 0\n";
+                }
+            }
             std::string file = p["FILE"];
             loadOBJ(file, matId, transform, invT);
         }
@@ -247,7 +262,31 @@ void Scene::loadOBJ(
             }
 
             Triangle tri{};
-            tri.materialid = materialId;
+            //tri.materialid = materialId;
+            const auto& faceMatIds = shape.mesh.material_ids;
+
+            int localIdx = (f < faceMatIds.size()) ? faceMatIds[f] : -1;
+            int triMatId = materialId; 
+
+            if (localIdx >= 0) {
+                
+                triMatId = mapLocalMatIdxToGlobal(localIdx, objmaterials, materialId);
+            }
+
+           
+            if (triMatId < 0 || triMatId >= (int)materials.size()) {
+                static int bad = 0;
+                if (bad++ < 10) {
+                    std::cerr << "[Scene] Invalid material id " << triMatId
+                        << " (materials.size=" << materials.size()
+                        << ") -> using mesh default " << materialId << "\n";
+                }
+                triMatId = (materialId >= 0 && materialId < (int)materials.size()) ? materialId : 0;
+            }
+
+
+
+            tri.materialid = triMatId;
             glm::vec3 vs[3];
             glm::vec3 ns[3];
             bool hasNormal = attrib.normals.size() > 0;
@@ -490,4 +529,37 @@ bool Scene::convertLatLongToCubemap(int faceRes) {
     }
     std::cout << "Converted latlong HDR to cubemap " << faceRes << "x" << faceRes << std::endl;
     return true;
+}
+
+
+int Scene::getOrCreateMaterialFromTiny(const tinyobj::material_t& tm, int fallbackId)
+{
+    auto trim = [](const std::string& s)->std::string {
+        size_t a = s.find_first_not_of(" \t\r\n");
+        size_t b = s.find_last_not_of(" \t\r\n");
+        return (a == std::string::npos) ? std::string() : s.substr(a, b - a + 1);
+        };
+    const std::string key = trim(tm.name);
+
+    auto it = mtlNameToGlobalId.find(key);
+    if (it != mtlNameToGlobalId.end())
+        return it->second;
+
+    if (fallbackId >= 0 && fallbackId < (int)materials.size())
+        return fallbackId;
+
+
+    return 0;
+}
+
+
+
+int Scene::mapLocalMatIdxToGlobal(int localIdx,
+    const std::vector<tinyobj::material_t>& objmaterials,
+    int fallbackId)
+{
+    if (localIdx < 0 || localIdx >= (int)objmaterials.size()) {
+        return (fallbackId >= 0 && fallbackId < (int)materials.size()) ? fallbackId : 0;
+    }
+    return getOrCreateMaterialFromTiny(objmaterials[localIdx], fallbackId);
 }

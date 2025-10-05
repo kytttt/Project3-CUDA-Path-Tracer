@@ -71,7 +71,7 @@
     "UP": [0.0, 1.0, 0.0],
 
     "APERTURE": 2.0,
-    "FOCAL_DISTANCE": 9
+    "FOCAL_DISTANCE": 11.5
 
     },
     "Objects":
@@ -126,18 +126,18 @@
             "SCALE":[3.0,3.0,3.0]
         },
         {
-            "TYPE": "sphere",
+            "TYPE": "cube",
             "MATERIAL": "glass",
             "TRANS": [2.0, 3.0, 1.5],
             "ROTAT": [0.0, 0.0, 0.0],
-            "SCALE": [2.5, 2.5, 2.5]
+            "SCALE": [3.0, 3.0, 3.0]
         },
         {
-            "TYPE": "sphere",
+            "TYPE": "cube",
             "MATERIAL": "glass_inside",
             "TRANS": [2.0, 3.0, 1.5],
             "ROTAT": [0.0, 0.0, 0.0],
-            "SCALE": [2.49, 2.49, 2.49]
+            "SCALE": [2.98, 2.98, 2.98]
         },
         {
             "TYPE": "sphere",
